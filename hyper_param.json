@@ -1,0 +1,26 @@
+{
+    "compile" : true,
+    "attn_type" : "efficient_attn",
+    
+    "n_layer" : 12,
+    "n_head" : 12,
+    "n_embd" : 768,
+    "dropout" : 0.0,
+    "bias" : false,
+
+    "dataset" : "shakespeare_char",
+    "batch_size" : 6,
+    "block_size" : 1024,
+    "gradient_accumulation_steps" : 5,
+
+    "learning_rate" : 6e-4,
+    "max_iters" : 500,
+    "weight_decay" : 1e-2,
+    "beta1" :0.9,
+    "beta2" : 0.95,
+
+    "decay_lr" : true, 
+    "warmup_iters" : 200, 
+    "min_lr" : 6e-5,
+    "out_dir" : "out"
+}

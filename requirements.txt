@@ -1,0 +1,4 @@
+numpy==1.24.4
+Requests==2.31.0
+torch==2.1.0a0+32f93b1
+transformers==4.35.0

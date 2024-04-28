@@ -49,6 +49,64 @@ python nanonano_train.py
 
 通过修改**hyper_param.json**的**compile**和**attn_type**字段来测试不同的训练选项。**compile**控制是否启用torch.compile编译模型，**attn_type**字段可选naive,math,flash_attn和efficient_attn四个选项，分别代表朴素的Attention实现，MATH，FLASH_ATTENTION，EFFICIENT_ATTENTION。
 
+本文主要对比手写自定义Attention操作，scaled_dot_product_attention中的SDPBackend.MATH，SDPBackend.FLASH_ATTENTION和SDPBackend.EFFICIENT_ATTENTION这四种Attention。四种Attention定义为:
+```python
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        assert config.n_embd % config.n_head == 0
+        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
+        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.attn_dropout = nn.Dropout(config.dropout)
+        self.resid_dropout = nn.Dropout(config.dropout)
+        self.n_head = config.n_head
+        self.n_embd = config.n_embd
+        self.dropout = config.dropout
+        # select attn type, option: naive, math, flash_attn, efficient_attn
+        self.attn_type = config.attn_type
+        if self.attn_type == 'naive':
+            print("Using naive attention")
+            # causal mask to ensure that attention is only applied to the left in the input sequence
+            self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
+                                        .view(1, 1, config.block_size, config.block_size))
+        if self.attn_type == 'math':
+            print("Using MATH SDPBackend.")
+            self.sdp_args = backend_map[SDPBackend.MATH]
+        elif self.attn_type == 'flash_attn':
+            print("Using FLASH_ATTENTION SDPBackend.")
+            self.sdp_args = backend_map[SDPBackend.FLASH_ATTENTION]
+        elif self.attn_type == 'efficient_attn':
+            print("Using EFFICIENT_ATTENTION SDPBackend.")
+            self.sdp_args = backend_map[SDPBackend.EFFICIENT_ATTENTION]
+
+    def forward(self, x):
+        B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
+
+        # calculate query, key, values for all heads in batch and move head forward to be the batch dim
+        q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)
+        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+
+        # select attention type
+        if self.attn_type != 'naive':
+            # Pytorch 2.0 buildin efficient attentions
+            with sdp_kernel(**self.sdp_args):
+                y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
+        else:
+            # manual implementation of attention
+            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+            att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
+            att = F.softmax(att, dim=-1)
+            att = self.attn_dropout(att)
+            y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
+
+        # output projection
+        y = self.resid_dropout(self.c_proj(y))
+        return y
+```
+
 # 测试结果
 
 每次测试分别跑500iter,batch size=6,seq len=1024

@@ -1,3 +1,5 @@
+
+
 # 背景
 
 基于nanoGPT项目测试Pytorch 2.0的scaled_dot_product_attention新算子和compile模型编译新特性。
@@ -111,7 +113,9 @@ class CausalSelfAttention(nn.Module):
 
 每次测试分别跑500iter,batch size=6,seq len=1024
 
-## 不同Attention实现的结果
+## 测试平台1
+
+**不同Attention结果**
 
 分别是手写的Attention操作，scaled_dot_product_attention中的SDPBackend.MATH，SDPBackend.FLASH_ATTENTION和SDPBackend.EFFICIENT_ATTENTION这四种Attention实现的速度差异对比结果。
 
@@ -122,7 +126,7 @@ class CausalSelfAttention(nn.Module):
 | FLASH_ATTENTION     |   475   | 3896MiB  |
 | EFFICIENT_ATTENTION |   485   | 3912MiB  |
 
-## torch.compile测试结果
+**torch.compile结果**
 
 对应四种Attention使用torch.compile的测试结果
 
@@ -136,6 +140,32 @@ class CausalSelfAttention(nn.Module):
 | FLASH_ATTENTION     | Yes     |     527      |   9939   |        509         |             490             | 3730MiB  |
 | EFFICIENT_ATTENTION | No      |      -       |   698    |        485         |             485             | 3912MiB  |
 | EFFICIENT_ATTENTION | Yes     |     533      |  10038   |        519         |             500             | 3768MiB  |
+
+### 测试平台2
+
+新增在AMD EPYC 7543 32-Core, A100-40G,CUDA 11.6平台测试结果
+
+**不同Attention结果**
+
+| Attn type           | ms/iter | RAM (MB) |
+| ------------------- | :-----: | :------: |
+| Naive               |   507   | 10982MiB |
+| MATH                |   292   | 7010MiB  |
+| FLASH_ATTENTION     |   172   | 5044MiB  |
+| EFFICIENT_ATTENTION |   210   | 5060MiB  |
+
+**torch.compile结果**
+
+| Attn type           | compile | compile time | 1st iter | avg speed(ms/iter) | avg speed (except 1st iter) | RAM (MB) |
+| ------------------- | ------- | :----------: | :------: | :----------------: | :-------------------------: | :------: |
+| Naive               | No      |      -       |   1147   |        507         |             505             | 10982MiB |
+| Naive               | Yes     |     293      |  12891   |        270         |             245             | 10528MiB |
+| MATH                | No      |      -       |   959    |        292         |             290             | 7010MiB  |
+| MATH                | Yes     |     297      |   9214   |        310         |             292             | 6910MiB  |
+| FLASH_ATTENTION     | No      |      -       |   848    |        172         |             171             | 5044MiB  |
+| FLASH_ATTENTION     | Yes     |     301      |   8793   |        205         |             188             | 4878MiB  |
+| EFFICIENT_ATTENTION | No      |      -       |   2617   |        210         |             205             | 5060MiB  |
+| EFFICIENT_ATTENTION | Yes     |     302      |   8910   |        237         |             219             | 4932MiB  |
 
 以上所有时间均以毫秒为单位。
 
